@@ -11,7 +11,7 @@ from tensordict.tensordict import TensorDict, TensorDictBase
 from torch import nn
 from torchrl.modules.tensordict_module import Actor
 
-from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
+from torchrl.data import BoundedTensorSpec, CompositeSpec, DiscreteTensorSpec
 from torchrl.envs import (
     CatTensors,
     EnvBase,
@@ -24,20 +24,22 @@ from torchrl.envs.utils import check_env_specs, step_mdp
 
 NUM_BANDITS = 10
 BANDIT_SIZE = 5
-bandits = torch.randint(low=0, high=10, size=(NUM_BANDITS, BANDIT_SIZE), dtype=torch.int32)
+HIGHEST_REWARD = 10
+
+bandits = torch.randint(low=0, high=HIGHEST_REWARD, size=(NUM_BANDITS, BANDIT_SIZE), dtype=torch.int32)
 print(bandits, "\n", bandits.sum(dim=1).unsqueeze(1))
 
 
 def _step(tensordict):
     selected_arm = tensordict["action"].squeeze(-1)
     # print(selected_arm)`S
-    reward = bandits[selected_arm.int(), random.randint(0, bandits.shape[1]-1)].float()
+    reward = bandits[selected_arm.int(), random.randint(0, bandits.shape[1]-1)]
     done = torch.zeros_like(reward, dtype=torch.bool)
 
     out = TensorDict(
         {
-            "selected_arm": selected_arm.int().float(),
-            "reward": reward,
+            "selected_arm": selected_arm,
+            "reward": reward.float(),
             "done": done,
         },
         tensordict.shape,
@@ -52,7 +54,7 @@ def _reset(self, tensordict):
     selected_arm = torch.randint(low=0, high=NUM_BANDITS-1, size=tensordict.shape, generator=self.rng)
     
     out = TensorDict({
-        "selected_arm": selected_arm.float()
+        "selected_arm": selected_arm
         }, batch_size=tensordict.shape)
 
     # print ("THIS IS THE ONE", out)
@@ -61,20 +63,16 @@ def _reset(self, tensordict):
 
 def _make_spec(self, tensordict):
     self.observation_spec = CompositeSpec(
-        selected_arm = BoundedTensorSpec(
-            low=0,
-            high=NUM_BANDITS,
+        selected_arm = DiscreteTensorSpec(
+            n=NUM_BANDITS,
             shape=(),
-            dtype=torch.float32,
         ),
         shape=()
     )
     self.state_spec = self.observation_spec.clone()
-    self.action_spec = BoundedTensorSpec(
-        low=0,
-        high=NUM_BANDITS,
+    self.action_spec = DiscreteTensorSpec(
+        n=NUM_BANDITS,
         shape=(1,),
-        dtype=torch.float32,
     )
     self.reward_spec = UnboundedContinuousTensorSpec(shape=(*tensordict.shape, 1))
 
@@ -87,7 +85,7 @@ def gen_params(batch_size=None) -> TensorDictBase:
     # print(selected_arm)
     td = TensorDict(
         {
-            "selected_arm": selected_arm.int().float()
+            "selected_arm": selected_arm
         },
         [],
     )
